@@ -12,12 +12,9 @@ const {
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY; 
 
 // --- НАСТРОЙКИ ---
-const TIMEOUT_MS = 9500; // 9.5 секунд (максимум для Vercel)
 const DAILY_LIMIT = 10;
 
-// ИСПОЛЬЗУЕМ AUTO - OpenRouter сам выберет рабочую модель
-const IMAGE_MODEL_ID = 'openrouter/auto';
-
+// Список бесплатных текстовых моделей
 const FREE_MODEL_IDS = [
     'google/gemini-2.0-flash-exp:free',
     'deepseek/deepseek-chat',
@@ -64,27 +61,10 @@ function getModelNiceName(key, lang = 'ru') {
     return m.label[lang] || m.label.en || m.key;
 }
 
-// --- ЗАПРОС ---
+// --- ЗАПРОС К OPENROUTER (ТОЛЬКО ТЕКСТ) ---
 async function openRouterRequest(messages, modelId) {
     if (!OPENROUTER_API_KEY) return "NO_KEY";
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
     try {
-        const body = {
-            "model": modelId,
-            "messages": messages,
-            // Пробуем подсказать OpenRouter, что мы хотим картинку (если auto)
-            // Но для конкретных моделей это может вызвать ошибку, поэтому осторожно
-        };
-
-        // Убираем temperature для картинок/auto
-        const isImageModel = modelId.includes('image') || modelId.includes('dall-e') || modelId.includes('flux') || modelId.includes('auto');
-        if (!isImageModel) {
-            body.temperature = 0.7;
-        }
-
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
             headers: {
@@ -93,11 +73,12 @@ async function openRouterRequest(messages, modelId) {
                 "X-Title": 'Telegram Bot',
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify(body),
-            signal: controller.signal
+            body: JSON.stringify({
+                "model": modelId,
+                "messages": messages,
+                "temperature": 0.7 // Для текста параметр нужен
+            })
         });
-
-        clearTimeout(timeoutId);
 
         if (!response.ok) {
             const errText = await response.text();
@@ -110,15 +91,11 @@ async function openRouterRequest(messages, modelId) {
         return data.choices[0].message.content;
 
     } catch (error) {
-        clearTimeout(timeoutId);
-        if (error.name === 'AbortError') {
-            return "TIMEOUT: Model is too slow for Free Server (>10s).";
-        }
         return `NETWORK ERROR: ${error.message}`;
     }
 }
 
-// --- ОБРАБОТЧИК ---
+// --- MAIN HANDLER ---
 async function handleTextMessage(ctx, textInput) {
     const message = ctx.message;
     const caption = message?.caption || '';
@@ -136,6 +113,7 @@ async function handleTextMessage(ctx, textInput) {
     await ctx.sendChatAction('typing');
 
     try {
+        // 1. ЗАГРУЗКА
         let savedModel = 'deepseek'; 
         let savedLang = 'ru';
         let userMode = 'chat';
@@ -153,40 +131,45 @@ async function handleTextMessage(ctx, textInput) {
 
         const lang = savedLang;
 
-        // 1. РЕЖИМ РИСОВАНИЯ (/image)
+        // ----------------------------------------------------
+        // ВЕТКА 1: РЕЖИМ РИСОВАНИЯ (/image)
+        // ----------------------------------------------------
         if (userMode === 'image') {
             if (text) {
+                // Проверка лимита
                 const canDraw = await checkLimit(userId);
                 if (!canDraw) {
-                    await ctx.reply("⛔️ Daily limit reached.");
+                    const limitMsg = (lang === 'ru') 
+                        ? "⛔️ **Лимит исчерпан**\n10/10 запросов. Ждите завтра."
+                        : "⛔️ **Daily Limit Reached**";
+                    await ctx.reply(limitMsg, { parse_mode: 'Markdown' });
                     return;
                 }
 
-                const waitMsg = await ctx.reply("🎨 Drawing (Auto)...");
-                
-                const prompt = `Generate an image: ${text}`;
-                const result = await openRouterRequest([{ role: "user", content: prompt }], IMAGE_MODEL_ID);
+                // ХАК ДЛЯ VERCEL: Генерируем через URL (без ожидания ответа)
+                // Это обходит таймаут в 10 секунд и всегда работает.
+                // Используем Pollinations (под капотом Flux/SDXL)
+                const seed = Math.floor(Math.random() * 1000000);
+                // Добавляем enhance=true для улучшения промпта
+                const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(text)}?width=1024&height=1024&seed=${seed}&nologo=true&enhance=true&model=flux`;
 
-                try { await ctx.telegram.deleteMessage(ctx.chat.id, waitMsg.message_id); } catch(e){}
-
-                if (!result || result.startsWith("API ERROR") || result.startsWith("NETWORK ERROR") || result.startsWith("TIMEOUT")) {
-                    await ctx.reply(`⚠️ Image Failed:\n${result}`);
-                    return; 
-                }
-
-                const urlMatch = result.match(/\((https?:\/\/[^\)]+)\)/) || result.match(/(https?:\/\/[^\s]+)/);
-                
-                if (urlMatch && urlMatch[1]) {
-                    await ctx.replyWithPhoto(urlMatch[1], { caption: `🖼 Generated by AI` });
+                try {
+                    await ctx.replyWithPhoto(imageUrl, { 
+                        caption: `🎨 *Prompt:* ${text}\n🖼 *Model:* Flux (Fast)`, 
+                        parse_mode: 'Markdown' 
+                    });
                     await incrementLimit(userId);
-                } else {
-                    await ctx.reply(result);
+                } catch (imgError) {
+                    console.error("Image Send Error:", imgError);
+                    await ctx.reply("⚠️ Telegram could not load the image. Try a simpler prompt.");
                 }
                 return; 
             }
         }
 
-        // 2. ФАЙЛЫ
+        // ----------------------------------------------------
+        // ВЕТКА 2: ФАЙЛЫ
+        // ----------------------------------------------------
         let fileUrl = null;
         let fileType = 'text'; 
         const pendingKey = `pending_file:${userId}`;
@@ -218,12 +201,15 @@ async function handleTextMessage(ctx, textInput) {
 
         if (!text && !fileUrl) return;
 
-        // 3. ЧАТ
+        // ----------------------------------------------------
+        // ВЕТКА 3: ЧАТ
+        // ----------------------------------------------------
         let modelToUse = savedModel;
         const pmodel = resolvePModelByKey(modelToUse);
         const realModelId = pmodel || 'deepseek/deepseek-chat';
         
         if (fileType === 'image') {
+             // Переключение на зрячую модель
              if (!pmodel.includes('gpt-4o') && !pmodel.includes('gemini') && !pmodel.includes('claude-3-5')) {
                  modelToUse = 'gemini_flash';
              }
@@ -237,7 +223,7 @@ async function handleTextMessage(ctx, textInput) {
         if (!isFreeModel) {
             const canChat = await checkLimit(userId);
             if (!canChat) {
-                await ctx.reply("⛔️ Daily limit reached.");
+                await ctx.reply("⛔️ Daily limit reached. Switch to free models.");
                 return;
             }
         }
@@ -269,7 +255,7 @@ async function handleTextMessage(ctx, textInput) {
 
         const aiResponse = await openRouterRequest(messagesToSend, realModelId);
 
-        if (!aiResponse || aiResponse.startsWith("API ERROR") || aiResponse.startsWith("NETWORK ERROR") || aiResponse.startsWith("TIMEOUT")) { 
+        if (!aiResponse || aiResponse.startsWith("API ERROR") || aiResponse.startsWith("NETWORK ERROR")) { 
             await ctx.reply(`⚠️ AI Error: ${aiResponse}`); 
             return; 
         }
@@ -293,6 +279,7 @@ async function handleTextMessage(ctx, textInput) {
     }
 }
 
+// --- ХЕЛПЕРЫ ---
 async function handleClearCommand(ctx) {
     const userId = ctx.from.id.toString();
     if (store.clearHistory) await store.clearHistory(userId);
@@ -354,4 +341,3 @@ module.exports = {
     handleModelCommand,
     handleModelCallback
 };
-                
