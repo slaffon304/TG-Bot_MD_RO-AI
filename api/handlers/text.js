@@ -13,8 +13,9 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
 // --- НАСТРОЙКИ ---
 const DAILY_LIMIT = 10;
+// Модель для перевода (бесплатная и быстрая)
+const TRANSLATION_MODEL = 'google/gemini-2.0-flash-lite-preview-02-05:free';
 
-// Список бесплатных моделей (текст)
 const FREE_MODEL_IDS = [
     'google/gemini-2.0-flash-exp:free',
     'deepseek/deepseek-chat',
@@ -61,35 +62,62 @@ function getModelNiceName(key, lang = 'ru') {
     return m.label[lang] || m.label.en || m.key;
 }
 
-// --- ГЕНЕРАЦИЯ (POLLINATIONS BUFFER) ---
-// Скачиваем картинку на сервер и отдаем как файл
-async function generateAndDownloadImage(prompt) {
+// --- 1. СЕРВИС ПЕРЕВОДА (OPENROUTER) ---
+async function translatePrompt(text) {
+    if (!OPENROUTER_API_KEY) return text;
+    try {
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+                "HTTP-Referer": process.env.VERCEL_URL,
+                "X-Title": 'Telegram Bot',
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                "model": TRANSLATION_MODEL,
+                "messages": [
+                    { role: "system", content: "Translate the following text to English for an image generation prompt. Return ONLY the translated text, no explanations." },
+                    { role: "user", content: text }
+                ],
+                "temperature": 0.3
+            })
+        });
+        const data = await response.json();
+        return data.choices[0].message.content;
+    } catch (e) {
+        console.error("Translation failed", e);
+        return text; // Если ошибка, возвращаем как есть
+    }
+}
+
+// --- 2. СЕРВИС ГЕНЕРАЦИИ (FLUX BUFFER) ---
+async function generateImageBuffer(prompt) {
     try {
         const seed = Math.floor(Math.random() * 1000000);
-        // Используем модель flux, убираем лого, добавляем улучшение
+        // Используем Pollinations (Flux) - это быстро и бесплатно
         const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&seed=${seed}&nologo=true&model=flux`;
         
         const response = await fetch(url);
         if (!response.ok) return null;
         
-        // Превращаем ответ в буфер (файл в памяти)
         const arrayBuffer = await response.arrayBuffer();
         return Buffer.from(arrayBuffer);
     } catch (e) {
-        console.error("Image Download Error:", e);
+        console.error("Image Gen Error:", e);
         return null;
     }
 }
 
-// --- ЧАТ (OPENROUTER) ---
-async function chatWithOpenRouter(messages, modelId) {
+// --- 3. СЕРВИС ЧАТА ---
+async function chatWithAI(messages, modelId) {
     if (!OPENROUTER_API_KEY) return "NO_KEY";
     try {
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
             headers: {
                 "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-                "HTTP-Referer": process.env.VERCEL_URL || 'https://bot.com',
+                "HTTP-Referer": process.env.VERCEL_URL,
                 "X-Title": 'Telegram Bot',
                 "Content-Type": "application/json"
             },
@@ -99,23 +127,19 @@ async function chatWithOpenRouter(messages, modelId) {
                 "temperature": 0.7
             })
         });
-
-        if (!response.ok) {
-            const errText = await response.text();
-            return `API ERROR: ${response.status} - ${errText}`; 
-        }
-        
         const data = await response.json();
+        if (!data.choices) return `API Error: ${JSON.stringify(data)}`;
         return data.choices[0].message.content;
     } catch (error) {
-        return `NETWORK ERROR: ${error.message}`;
+        return `Network Error: ${error.message}`;
     }
 }
 
 // --- MAIN HANDLER ---
 async function handleTextMessage(ctx, textInput) {
     const message = ctx.message;
-    const text = textInput || message?.caption || ''; 
+    const caption = message?.caption || '';
+    const text = textInput || caption || ''; 
     const userId = ctx.from.id.toString();
 
     if (text === '/debug') {
@@ -142,41 +166,50 @@ async function handleTextMessage(ctx, textInput) {
             if (m) savedModel = m;
             if (l) savedLang = l;
             if (mode) userMode = mode;
-        } catch (e) { console.error("DB Error", e); }
+        } catch (e) {}
 
         const lang = savedLang;
 
         // ----------------------------------------------------
-        // ВЕТКА 1: РЕЖИМ РИСОВАНИЯ (БЕСПЛАТНО + БУФЕР)
+        // РЕЖИМ РИСОВАНИЯ (Flux + Перевод + Буфер)
         // ----------------------------------------------------
         if (userMode === 'image') {
             if (text) {
                 const canDraw = await checkLimit(userId);
                 if (!canDraw) {
-                    await ctx.reply("⛔️ Daily limit reached (10/10).");
+                    await ctx.reply("⛔️ Limit reached (10/10).");
                     return;
                 }
 
                 const waitMsg = await ctx.reply("🎨 Drawing...");
                 
-                // Скачиваем картинку в память
-                const imageBuffer = await generateAndDownloadImage(text);
+                // A. Перевод (если есть кириллица)
+                let promptEn = text;
+                if (/[а-яА-ЯёЁ]/.test(text)) {
+                    promptEn = await translatePrompt(text);
+                }
+
+                // B. Генерация и скачивание
+                const imageBuffer = await generateImageBuffer(promptEn);
 
                 try { await ctx.telegram.deleteMessage(ctx.chat.id, waitMsg.message_id); } catch(e){}
 
                 if (imageBuffer) {
-                    // Отправляем как файл (источник: буфер)
-                    await ctx.replyWithPhoto({ source: imageBuffer }, { caption: `🖼 Generated by Flux` });
+                    // C. Отправка файла
+                    await ctx.replyWithPhoto({ source: imageBuffer }, { 
+                        caption: `🖼 Generated by AI\nPrompt: ${text}`, 
+                        parse_mode: 'Markdown' 
+                    });
                     await incrementLimit(userId);
                 } else {
-                    await ctx.reply("⚠️ Server Error: Could not generate image. Try again.");
+                    await ctx.reply("⚠️ Failed to generate image. Try again.");
                 }
                 return; 
             }
         }
 
         // ----------------------------------------------------
-        // ВЕТКА 2: ФАЙЛЫ
+        // РЕЖИМ ФАЙЛОВ И ЧАТА
         // ----------------------------------------------------
         let fileUrl = null;
         let fileType = 'text'; 
@@ -208,9 +241,6 @@ async function handleTextMessage(ctx, textInput) {
 
         if (!text && !fileUrl) return;
 
-        // ----------------------------------------------------
-        // ВЕТКА 3: ЧАТ
-        // ----------------------------------------------------
         let modelToUse = savedModel;
         const pmodel = resolvePModelByKey(modelToUse);
         const realModelId = pmodel || 'deepseek/deepseek-chat';
@@ -229,7 +259,7 @@ async function handleTextMessage(ctx, textInput) {
         if (!isFreeModel) {
             const canChat = await checkLimit(userId);
             if (!canChat) {
-                await ctx.reply("⛔️ Daily limit reached. Switch to free models.");
+                await ctx.reply("⛔️ Daily limit reached.");
                 return;
             }
         }
@@ -259,9 +289,9 @@ async function handleTextMessage(ctx, textInput) {
             { role: "user", content: userMessageContent }
         ];
 
-        const aiResponse = await chatWithOpenRouter(messagesToSend, realModelId);
+        const aiResponse = await chatWithAI(messagesToSend, realModelId);
 
-        if (!aiResponse || aiResponse.startsWith("API ERROR") || aiResponse.startsWith("NETWORK ERROR")) { 
+        if (!aiResponse || aiResponse.startsWith("API Error")) { 
             await ctx.reply(`⚠️ AI Error: ${aiResponse}`); 
             return; 
         }
@@ -287,8 +317,7 @@ async function handleTextMessage(ctx, textInput) {
 
 // --- ХЕЛПЕРЫ ---
 async function handleClearCommand(ctx) {
-    const userId = ctx.from.id.toString();
-    if (store.clearHistory) await store.clearHistory(userId);
+    if (store.clearHistory) await store.clearHistory(ctx.from.id.toString());
     await ctx.reply('🗑️ History cleared.');
 }
 
@@ -300,7 +329,6 @@ async function handleModelCommand(ctx) {
         if (store.getUserLang) lang = await store.getUserLang(userId) || 'ru';
         if (store.getUserModel) model = await store.getUserModel(userId) || 'deepseek';
     } catch(e){}
-
     const menuText = content.gpt_menu[lang] || content.gpt_menu.en;
     const keyboard = gptKeyboard(lang, model, () => false);
     await ctx.reply(menuText, { parse_mode: 'Markdown', reply_markup: keyboard });
@@ -311,9 +339,7 @@ async function handleModelCallback(ctx, langCode) {
     const key = data.replace('model_', ''); 
     const userId = ctx.from.id.toString();
     let currentLang = langCode || 'ru';
-    try {
-        if (!langCode && store.getUserLang) currentLang = await store.getUserLang(userId) || 'ru';
-    } catch (e) {}
+    try { if (!langCode && store.getUserLang) currentLang = await store.getUserLang(userId) || 'ru'; } catch (e) {}
 
     if (isProKey(key)) {
         const hasPremium = false; 
@@ -323,21 +349,15 @@ async function handleModelCallback(ctx, langCode) {
             return;
         }
     }
-
     if (store.clearHistory) await store.clearHistory(userId);
     if (store.setUserModel) await store.setUserModel(userId, key);
-
     try {
         const keyboard = gptKeyboard(currentLang, key, () => false);
         await ctx.editMessageReplyMarkup(keyboard); 
     } catch (e) {}
-
+    
     const niceName = getModelNiceName(key, currentLang);
-    const replyText = (currentLang === 'ru') 
-        ? `Вы выбрали модель ${niceName}. История сброшена.` 
-        : `You selected model ${niceName}. History reset.`;
-
-    await ctx.reply(replyText + "\n/settingsbot");
+    await ctx.reply(`✅ Model: ${niceName}\nHistory reset.`);
     await ctx.answerCbQuery();
 }
 
@@ -347,3 +367,4 @@ module.exports = {
     handleModelCommand,
     handleModelCallback
 };
+                
