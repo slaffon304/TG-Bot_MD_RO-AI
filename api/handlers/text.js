@@ -12,9 +12,11 @@ const {
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY; 
 
 // --- НАСТРОЙКИ ---
-const TIMEOUT_MS = 9000; // 9 секунд (защита от петель Telegram)
+const TIMEOUT_MS = 9000; // 9 секунд
 const DAILY_LIMIT = 10;
-const IMAGE_MODEL_ID = 'openai/gpt-5-image-mini';
+
+// ВАЖНО: Используем Flux, потому что он быстрый (2 сек) и не вызывает таймаут
+const IMAGE_MODEL_ID = 'black-forest-labs/flux-1-schnell';
 
 const FREE_MODEL_IDS = [
     'google/gemini-2.0-flash-exp:free',
@@ -32,9 +34,9 @@ const FOOTER_MSG = {
 };
 
 const ASK_FILE_MSG = {
-    ru: "🧐 Я вижу файл! Что мне с ним сделать? (Описать, решить задачу или перевести текст?)",
-    ro: "🧐 Văd fișierul! Ce dorești să fac cu el? (Să-l descriu, să rezolv o problemă sau să traduc text?)",
-    en: "🧐 I see the file! What should I do with it? (Describe it, solve a problem, or translate text?)"
+    ru: "🧐 Я вижу файл! Что мне с ним сделать?",
+    ro: "🧐 Văd fișierul! Ce dorești să fac cu el?",
+    en: "🧐 I see the file! What should I do with it?"
 };
 
 // --- ЛИМИТЫ ---
@@ -62,11 +64,10 @@ function getModelNiceName(key, lang = 'ru') {
     return m.label[lang] || m.label.en || m.key;
 }
 
-// --- БЕЗОПАСНЫЙ ЗАПРОС С ТАЙМАУТОМ ---
+// --- ЗАПРОС К OPENROUTER (БЕЗОПАСНЫЙ) ---
 async function openRouterRequest(messages, modelId) {
     if (!OPENROUTER_API_KEY) return "NO_KEY";
     
-    // Создаем контроллер для отмены запроса через 9 секунд
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -76,13 +77,11 @@ async function openRouterRequest(messages, modelId) {
             "messages": messages
         };
 
-        // ВАЖНО: Не отправляем temperature для картинок
+        // Убираем temperature для картинок
         const isImageModel = modelId.includes('image') || modelId.includes('dall-e') || modelId.includes('flux');
         if (!isImageModel) {
             body.temperature = 0.7;
         }
-
-        console.log(`[AI] Req -> ${modelId} (Img: ${isImageModel})`);
 
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
@@ -93,10 +92,10 @@ async function openRouterRequest(messages, modelId) {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify(body),
-            signal: controller.signal // Подключаем таймер
+            signal: controller.signal
         });
 
-        clearTimeout(timeoutId); // Отменяем таймер, если успели
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
             const errText = await response.text();
@@ -111,21 +110,19 @@ async function openRouterRequest(messages, modelId) {
     } catch (error) {
         clearTimeout(timeoutId);
         if (error.name === 'AbortError') {
-            console.error("Request Timed Out");
-            return "TIMEOUT: Generation took too long. Try again.";
+            return "TIMEOUT: Generation took too long (>9s). Try again.";
         }
-        console.error("Fetch Error:", error);
         return `NETWORK ERROR: ${error.message}`;
     }
 }
-// --- MAIN HANDLER ---
+
+// --- ОБРАБОТЧИК СООБЩЕНИЙ ---
 async function handleTextMessage(ctx, textInput) {
     const message = ctx.message;
     const caption = message?.caption || '';
     const text = textInput || caption || ''; 
     const userId = ctx.from.id.toString();
 
-    // DEBUG
     if (text === '/debug') {
         if (store.getDebugData) {
             const debugInfo = await store.getDebugData(userId);
@@ -137,7 +134,7 @@ async function handleTextMessage(ctx, textInput) {
     await ctx.sendChatAction('typing');
 
     try {
-        // 1. ЗАГРУЗКА ДАННЫХ
+        // 1. Загрузка
         let savedModel = 'deepseek'; 
         let savedLang = 'ru';
         let userMode = 'chat';
@@ -155,64 +152,52 @@ async function handleTextMessage(ctx, textInput) {
 
         const lang = savedLang;
 
-        // ----------------------------------------------------
-        // ВЕТКА 1: РИСОВАНИЕ (/image)
-        // ----------------------------------------------------
+        // 2. РЕЖИМ РИСОВАНИЯ (/image)
         if (userMode === 'image') {
             if (text) {
                 const canDraw = await checkLimit(userId);
                 if (!canDraw) {
-                    const limitMsg = (lang === 'ru') 
-                        ? "⛔️ **Лимит исчерпан**\n10/10 запросов. Ждите завтра."
-                        : "⛔️ **Daily Limit Reached**";
-                    await ctx.reply(limitMsg, { parse_mode: 'Markdown' });
+                    await ctx.reply("⛔️ Daily limit reached (10/10).");
                     return;
                 }
 
-                const waitMsg = await ctx.reply("🎨 Drawing... (Wait ~10s)");
+                const waitMsg = await ctx.reply("🎨 Drawing (Flux)...");
                 
                 const prompt = `Generate an image: ${text}`;
                 const result = await openRouterRequest([{ role: "user", content: prompt }], IMAGE_MODEL_ID);
 
                 try { await ctx.telegram.deleteMessage(ctx.chat.id, waitMsg.message_id); } catch(e){}
 
-                // Обработка ошибок и ТАЙМАУТА
                 if (!result || result.startsWith("API ERROR") || result.startsWith("NETWORK ERROR") || result.startsWith("TIMEOUT")) {
-                    await ctx.reply(`⚠️ **Error:** ${result}\n_Try again later._`, { parse_mode: 'Markdown' });
+                    // Убрали Markdown, чтобы видеть чистую ошибку
+                    await ctx.reply(`⚠️ Image Failed:\n${result}`);
                     return; 
                 }
 
-                // Ищем ссылку
                 const urlMatch = result.match(/\((https?:\/\/[^\)]+)\)/) || result.match(/(https?:\/\/[^\s]+)/);
                 
                 if (urlMatch && urlMatch[1]) {
-                    await ctx.replyWithPhoto(urlMatch[1], { caption: `🖼 Generated by GPT-5 Image Mini` });
+                    await ctx.replyWithPhoto(urlMatch[1], { caption: `🖼 Generated by Flux` });
                     await incrementLimit(userId);
                 } else {
-                    await ctx.reply(result.substring(0, 500)); // Если пришел текст
+                    await ctx.reply(result);
                 }
                 return; 
             }
         }
 
-        // ----------------------------------------------------
-        // ВЕТКА 2: ФАЙЛЫ
-        // ----------------------------------------------------
+        // 3. ФАЙЛЫ
         let fileUrl = null;
         let fileType = 'text'; 
         const pendingKey = `pending_file:${userId}`;
         
         const isPhoto = message?.photo;
-        const isVoice = message?.voice || message?.audio;
-        const isVideo = message?.video || message?.video_note;
         const isDoc = message?.document;
 
-        if (isPhoto || isVoice || isVideo || isDoc) {
+        if (isPhoto || isDoc) {
              try {
                 let fileId = null;
                 if (isPhoto) { fileId = message.photo[message.photo.length - 1].file_id; fileType = 'image'; }
-                else if (isVoice) { fileId = (message.voice || message.audio).file_id; fileType = 'audio'; }
-                else if (isVideo) { fileId = (message.video || message.video_note).file_id; fileType = 'video'; }
                 else if (isDoc) { fileId = message.document.file_id; fileType = 'doc'; }
 
                 if (fileId) {
@@ -233,24 +218,17 @@ async function handleTextMessage(ctx, textInput) {
 
         if (!text && !fileUrl) return;
 
-        // ----------------------------------------------------
-        // ВЕТКА 3: ЧАТ
-        // ----------------------------------------------------
+        // 4. ЧАТ
         let modelToUse = savedModel;
         const pmodel = resolvePModelByKey(modelToUse);
         const realModelId = pmodel || 'deepseek/deepseek-chat';
         
-        // Авто-переключение для файлов
-        if (fileType === 'audio') modelToUse = getModelForTask('audio_input');
-        else if (fileType === 'video') modelToUse = getModelForTask('video_input');
-        else if (fileType === 'doc') modelToUse = getModelForTask('doc_heavy');
-        else if (fileType === 'image') {
+        if (fileType === 'image') {
              if (!pmodel.includes('gpt-4o') && !pmodel.includes('gemini') && !pmodel.includes('claude-3-5')) {
                  modelToUse = 'gemini_flash';
              }
         }
 
-        // Проверка платности
         let isFreeModel = false;
         if (FREE_MODEL_IDS.includes(realModelId) || realModelId.includes(':free')) {
             isFreeModel = true;
@@ -259,10 +237,7 @@ async function handleTextMessage(ctx, textInput) {
         if (!isFreeModel) {
             const canChat = await checkLimit(userId);
             if (!canChat) {
-                 const limitMsg = (lang === 'ru') 
-                    ? "⛔️ **Лимит исчерпан**\nПереключитесь на бесплатные модели (DeepSeek, Gemini) в /menu."
-                    : "⛔️ **Daily Limit Reached**\nSwitch to free models in /menu.";
-                await ctx.reply(limitMsg, { parse_mode: 'Markdown' });
+                await ctx.reply("⛔️ Daily limit reached. Switch to free models.");
                 return;
             }
         }
@@ -305,7 +280,7 @@ async function handleTextMessage(ctx, textInput) {
         if (!isFreeModel) await incrementLimit(userId);
 
         if (store.updateConversation) {
-            const historyText = fileUrl ? `[${fileType.toUpperCase()}] ${text}` : text;
+            const historyText = fileUrl ? `[FILE] ${text}` : text;
             await store.updateConversation(
                 userId, 
                 { role: "user", content: historyText }, 
@@ -380,4 +355,4 @@ module.exports = {
     handleModelCommand,
     handleModelCallback
 };
-                        
+            
