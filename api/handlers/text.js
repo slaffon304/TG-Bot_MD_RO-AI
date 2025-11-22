@@ -10,14 +10,13 @@ const {
 } = require('../../lib/models');
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY; 
+const FAL_KEY = process.env.FAL_KEY; // ВАЖНО: Добавьте этот ключ в Vercel
 
 // --- НАСТРОЙКИ ---
 const DAILY_LIMIT = 10;
-const TIMEOUT_MS = 9800; // 9.8 сек (Лимит Vercel Free)
+const TIMEOUT_MS = 9500; // 9.5 сек
 
-// ВАША МОДЕЛЬ
-const IMAGE_MODEL_ID = 'openai/gpt-5-image-mini';
-
+// Список бесплатных текстовых моделей
 const FREE_MODEL_IDS = [
     'google/gemini-2.0-flash-exp:free',
     'deepseek/deepseek-chat',
@@ -64,27 +63,48 @@ function getModelNiceName(key, lang = 'ru') {
     return m.label[lang] || m.label.en || m.key;
 }
 
-// --- ЗАПРОС К OPENROUTER ---
-async function openRouterRequest(messages, modelId) {
-    if (!OPENROUTER_API_KEY) return "NO_KEY";
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+// --- ФУНКЦИЯ ГЕНЕРАЦИИ ЧЕРЕЗ FAL.AI ---
+async function generateImageFal(prompt) {
+    if (!FAL_KEY) return "NO_KEY";
 
     try {
-        const body = {
-            "model": modelId,
-            "messages": messages
-        };
+        // Используем самую быструю модель: flux/schnell
+        const response = await fetch("https://fal.run/fal-ai/flux/schnell", {
+            method: "POST",
+            headers: {
+                "Authorization": `Key ${FAL_KEY}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                prompt: prompt,
+                image_size: "landscape_4_3", // Можно менять на square_hd
+                num_inference_steps: 4, // Schnell работает за 4 шага
+                enable_safety_checker: true // Безопасность
+            })
+        });
 
-        // ДЛЯ КАРТИНОК: НЕ отправляем temperature, max_tokens и т.д.
-        // ДЛЯ ТЕКСТА: Добавляем temperature
-        const isImageModel = modelId.includes('image') || modelId.includes('dall-e') || modelId.includes('flux');
-        
-        if (!isImageModel) {
-            body.temperature = 0.7;
+        if (!response.ok) {
+            const err = await response.text();
+            return `FAL ERROR: ${err}`;
         }
 
+        const data = await response.json();
+        // Fal возвращает: { images: [ { url: "..." } ] }
+        if (data.images && data.images.length > 0) {
+            return data.images[0].url;
+        }
+        return "FAL ERROR: No image returned";
+
+    } catch (error) {
+        console.error("Fal Error:", error);
+        return `FAL NETWORK ERROR: ${error.message}`;
+    }
+}
+
+// --- ФУНКЦИЯ ЧАТА (OPENROUTER) ---
+async function chatWithOpenRouter(messages, modelId) {
+    if (!OPENROUTER_API_KEY) return "NO_KEY";
+    try {
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
             headers: {
@@ -93,32 +113,21 @@ async function openRouterRequest(messages, modelId) {
                 "X-Title": 'Telegram Bot',
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify(body),
-            signal: controller.signal
+            body: JSON.stringify({
+                "model": modelId,
+                "messages": messages,
+                "temperature": 0.7
+            })
         });
-
-        clearTimeout(timeoutId);
 
         if (!response.ok) {
             const errText = await response.text();
-            // Пробуем распарсить JSON ошибки для красоты
-            try {
-                const jsonErr = JSON.parse(errText);
-                if (jsonErr.error && jsonErr.error.message) return `API ERROR: ${jsonErr.error.message}`;
-            } catch(e) {}
             return `API ERROR: ${response.status} - ${errText}`; 
         }
         
         const data = await response.json();
-        if (!data.choices || data.choices.length === 0) return "API ERROR: Empty response";
-        
         return data.choices[0].message.content;
-
     } catch (error) {
-        clearTimeout(timeoutId);
-        if (error.name === 'AbortError') {
-            return "TIMEOUT"; // Метка таймаута
-        }
         return `NETWORK ERROR: ${error.message}`;
     }
 }
@@ -126,8 +135,7 @@ async function openRouterRequest(messages, modelId) {
 // --- MAIN HANDLER ---
 async function handleTextMessage(ctx, textInput) {
     const message = ctx.message;
-    const caption = message?.caption || '';
-    const text = textInput || caption || ''; 
+    const text = textInput || message?.caption || ''; 
     const userId = ctx.from.id.toString();
 
     if (text === '/debug') {
@@ -159,44 +167,37 @@ async function handleTextMessage(ctx, textInput) {
         const lang = savedLang;
 
         // ----------------------------------------------------
-        // ВЕТКА 1: РЕЖИМ РИСОВАНИЯ (/image)
+        // ВЕТКА 1: РЕЖИМ РИСОВАНИЯ (FAL.AI)
         // ----------------------------------------------------
         if (userMode === 'image') {
             if (text) {
+                // 1. Лимит
                 const canDraw = await checkLimit(userId);
                 if (!canDraw) {
                     await ctx.reply("⛔️ Limit reached (10/10).");
                     return;
                 }
 
-                const waitMsg = await ctx.reply("🎨 Drawing...");
+                const waitMsg = await ctx.reply("🎨 Drawing (Fal.ai)...");
                 
-                const prompt = `Generate an image: ${text}`;
-                const result = await openRouterRequest([{ role: "user", content: prompt }], IMAGE_MODEL_ID);
+                // 2. Генерация через Fal
+                const imageUrl = await generateImageFal(text);
 
                 try { await ctx.telegram.deleteMessage(ctx.chat.id, waitMsg.message_id); } catch(e){}
 
-                // Обработка ошибок
-                if (result === "TIMEOUT") {
-                    await ctx.reply("⏳ **Server Timeout**\nМодель генерировала слишком долго (>10c) и сервер прервал соединение. Попробуйте запрос проще.", { parse_mode: 'Markdown' });
+                // 3. Проверка результата
+                if (imageUrl.startsWith("NO_KEY")) {
+                    await ctx.reply("⚠️ Config Error: FAL_KEY is missing in Vercel.");
                     return;
                 }
-                if (!result || result.startsWith("API ERROR") || result.startsWith("NETWORK ERROR")) {
-                    await ctx.reply(`⚠️ **Generation Failed**\n${result}`, { parse_mode: 'Markdown' });
-                    return; 
+                if (imageUrl.startsWith("FAL ERROR") || imageUrl.startsWith("FAL NETWORK")) {
+                    await ctx.reply(`⚠️ **Generation Failed**\n${imageUrl}`, { parse_mode: 'Markdown' });
+                    return;
                 }
 
-                // Ищем ссылку в ответе Markdown ![img](url) или просто https://...
-                const urlMatch = result.match(/\((https?:\/\/[^\)]+)\)/) || result.match(/(https?:\/\/[^\s]+)/);
-                
-                if (urlMatch && urlMatch[1]) {
-                    // Отправляем КАК ФОТО
-                    await ctx.replyWithPhoto(urlMatch[1], { caption: `🖼 Generated by GPT-5 Image Mini` });
-                    await incrementLimit(userId);
-                } else {
-                    // Если ссылки нет, выводим ответ (может там описание отказа)
-                    await ctx.reply(result);
-                }
+                // 4. Успех
+                await ctx.replyWithPhoto(imageUrl, { caption: `🖼 Generated by Flux (Fal.ai)` });
+                await incrementLimit(userId);
                 return; 
             }
         }
@@ -235,12 +236,13 @@ async function handleTextMessage(ctx, textInput) {
         if (!text && !fileUrl) return;
 
         // ----------------------------------------------------
-        // ВЕТКА 3: ЧАТ
+        // ВЕТКА 3: ЧАТ (OPENROUTER)
         // ----------------------------------------------------
         let modelToUse = savedModel;
         const pmodel = resolvePModelByKey(modelToUse);
         const realModelId = pmodel || 'deepseek/deepseek-chat';
         
+        // Авто-переключение
         if (fileType === 'image') {
              if (!pmodel.includes('gpt-4o') && !pmodel.includes('gemini') && !pmodel.includes('claude-3-5')) {
                  modelToUse = 'gemini_flash';
@@ -255,7 +257,7 @@ async function handleTextMessage(ctx, textInput) {
         if (!isFreeModel) {
             const canChat = await checkLimit(userId);
             if (!canChat) {
-                await ctx.reply("⛔️ Limit reached. Switch to free models.");
+                await ctx.reply("⛔️ Daily limit reached. Switch to free models.");
                 return;
             }
         }
@@ -285,9 +287,9 @@ async function handleTextMessage(ctx, textInput) {
             { role: "user", content: userMessageContent }
         ];
 
-        const aiResponse = await openRouterRequest(messagesToSend, realModelId);
+        const aiResponse = await chatWithOpenRouter(messagesToSend, realModelId);
 
-        if (!aiResponse || aiResponse.startsWith("API ERROR") || aiResponse.startsWith("NETWORK ERROR") || aiResponse === "TIMEOUT") { 
+        if (!aiResponse || aiResponse.startsWith("API ERROR") || aiResponse.startsWith("NETWORK ERROR")) { 
             await ctx.reply(`⚠️ AI Error: ${aiResponse}`); 
             return; 
         }
@@ -373,4 +375,4 @@ module.exports = {
     handleModelCommand,
     handleModelCallback
 };
-            
+                    
