@@ -16,63 +16,63 @@ const translations = {
   },
   es: { 
     legal_title: 'Consentimiento Legal', legal_body: 'Al aceptar, usted acepta y confirma que está interactuando con una Inteligencia Artificial.\n\nEste sistema está diseñado con fines de entretenimiento y no constituye ningún tipo de asesoramiento.', legal_btn: 'Acepto', 
-    welcome: 'Bienvenido', auth_subtitle: 'Inicia sesión', email: 'Correo', password: 'Clave', continue: 'Continuar', or_continue: 'o con', 
+    welcome: 'Bienvenido', auth_subtitle: 'Inicia sesión', email: 'Correo', password: 'Clave', continue: 'Continuar', or_continue: 'o con', error_empty: 'Error: Campos vacíos', reg_success: 'Registro exitoso', login_success: 'Inicio de sesión exitoso',
     comp_setup: 'CONFIGURACIÓN', persona_voice: 'Persona y Voz', plugin_store: 'Plugins', skills_int: 'HABILIDADES', comp_skills: 'Habilidades', account: 'CUENTA', sub_limits: 'Suscripción', lang: 'Idioma', settings: 'Ajustes', sign_out: 'Salir', 
-    voice_quota: 'Cuota', mins_left: 'min restantes', get_mins: 'Más min', hi: 'Hola' 
+    voice_quota: 'Cuota', mins_left: 'min restantes', get_mins: 'Más min', live_conn: 'En línea', connecting: 'Conectando...', ready: 'Listo', tap_to_start: 'Toca para llamar', listening: 'Escuchando...', hi: 'Hola' 
   },
   fr: { 
     legal_title: 'Consentement Légal', legal_body: 'En acceptant, vous acceptez et confirmez que vous interagissez avec une Intelligence Artificielle.\n\nCe système est conçu à des fins de divertissement et ne constitue en aucun cas une forme de consultation.', legal_btn: 'J\'accepte', 
-    welcome: 'Bienvenue', auth_subtitle: 'Connexion', email: 'Email', password: 'MDP', continue: 'Continuer', or_continue: 'ou avec', 
+    welcome: 'Bienvenue', auth_subtitle: 'Connexion', email: 'Email', password: 'MDP', continue: 'Continuer', or_continue: 'ou avec', error_empty: 'Erreur : Champs vides', reg_success: 'Inscription réussie', login_success: 'Connexion réussie',
     comp_setup: 'CONFIGURATION', persona_voice: 'Voix', plugin_store: 'Plugins', skills_int: 'COMPÉTENCES', comp_skills: 'Compétences', account: 'COMPTE', sub_limits: 'Abonnement', lang: 'Langue', settings: 'Paramètres', sign_out: 'Sortir', 
-    voice_quota: 'Quota', mins_left: 'min restantes', get_mins: 'Plus min', hi: 'Salut' 
+    voice_quota: 'Quota', mins_left: 'min restantes', get_mins: 'Plus min', live_conn: 'En ligne', connecting: 'Connexion...', ready: 'Prêt', tap_to_start: 'Appuyez pour appeler', listening: 'Écoute...', hi: 'Salut' 
   },
   de: { 
     legal_title: 'Rechtliche Zustimmung', legal_body: 'Mit Ihrer Zustimmung akzeptieren und bestätigen Sie, dass Sie mit einer Künstlichen Intelligenz interagieren.\n\nDieses System wurde zu Unterhaltungszwecken entwickelt und stellt keinerlei Form von Beratung dar.', legal_btn: 'Ich stimme zu', 
-    welcome: 'Willkommen', auth_subtitle: 'Anmelden', email: 'E-Mail', password: 'Passwort', continue: 'Weiter', or_continue: 'oder mit', 
+    welcome: 'Willkommen', auth_subtitle: 'Anmelden', email: 'E-Mail', password: 'Passwort', continue: 'Weiter', or_continue: 'oder mit', error_empty: 'Fehler: Leere Felder', reg_success: 'Registrierung erfolgreich', login_success: 'Anmeldung erfolgreich',
     comp_setup: 'SETUP', persona_voice: 'Stimme', plugin_store: 'Plugins', skills_int: 'FÄHIGKEITEN', comp_skills: 'Fähigkeiten', account: 'KONTO', sub_limits: 'Abonnement', lang: 'Sprache', settings: 'Optionen', sign_out: 'Abmelden', 
-    voice_quota: 'Limit', mins_left: 'Min. übrig', get_mins: 'Mehr', hi: 'Hallo' 
+    voice_quota: 'Limit', mins_left: 'Min. übrig', get_mins: 'Mehr', live_conn: 'Online', connecting: 'Verbinden...', ready: 'Bereit', tap_to_start: 'Tippen zum Anrufen', listening: 'Zuhören...', hi: 'Hallo' 
   },
   it: { 
     legal_title: 'Consenso Legale', legal_body: 'Accettando, accetti e confermi di interagire con un\'Intelligenza Artificiale.\n\nQuesto sistema è stato creato per scopi di intrattenimento e non costituisce alcun tipo di consulenza.', legal_btn: 'Accetto', 
-    welcome: 'Benvenuto', auth_subtitle: 'Accedi', email: 'Email', password: 'Password', continue: 'Continua', or_continue: 'o con', 
+    welcome: 'Benvenuto', auth_subtitle: 'Accedi', email: 'Email', password: 'Password', continue: 'Continua', or_continue: 'o con', error_empty: 'Errore: Campi vuoti', reg_success: 'Registrazione completata', login_success: 'Accesso effettuato',
     comp_setup: 'SETUP', persona_voice: 'Voce', plugin_store: 'Plugins', skills_int: 'ABILITÀ', comp_skills: 'Abilità', account: 'ACCOUNT', sub_limits: 'Abbonamento', lang: 'Lingua', settings: 'Opzioni', sign_out: 'Esci', 
-    voice_quota: 'Quota', mins_left: 'min rimasti', get_mins: 'Più min', hi: 'Ciao' 
+    voice_quota: 'Quota', mins_left: 'min rimasti', get_mins: 'Più min', live_conn: 'In linea', connecting: 'Connessione...', ready: 'Pronto', tap_to_start: 'Tocca per chiamare', listening: 'In ascolto...', hi: 'Ciao' 
   },
   pt: { 
     legal_title: 'Consentimento Legal', legal_body: 'Ao concordar, você aceita e confirma que está interagindo com uma Inteligência Artificial.\n\nEste sistema foi criado para fins de entretenimento e não constitui nenhum tipo de aconselhamento.', legal_btn: 'Concordo', 
-    welcome: 'Bem-vindo', auth_subtitle: 'Entrar', email: 'E-mail', password: 'Senha', continue: 'Continuar', or_continue: 'ou com', 
+    welcome: 'Bem-vindo', auth_subtitle: 'Entrar', email: 'E-mail', password: 'Senha', continue: 'Continuar', or_continue: 'ou com', error_empty: 'Erro: Campos vazios', reg_success: 'Registro bem-sucedido', login_success: 'Login bem-sucedido',
     comp_setup: 'SETUP', persona_voice: 'Voz', plugin_store: 'Plugins', skills_int: 'HABILIDADES', comp_skills: 'Habilidades', account: 'CONTA', sub_limits: 'Assinatura', lang: 'Idioma', settings: 'Ajustes', sign_out: 'Sair', 
-    voice_quota: 'Cota', mins_left: 'min restantes', get_mins: 'Mais min', hi: 'Olá' 
+    voice_quota: 'Cota', mins_left: 'min restantes', get_mins: 'Mais min', live_conn: 'Conectado', connecting: 'Conectando...', ready: 'Pronto', tap_to_start: 'Toque para ligar', listening: 'Ouvindo...', hi: 'Olá' 
   },
   zh: { 
     legal_title: '法律同意', legal_body: '同意即表示您接受并确认您正在与人工智能进行互动。\n\n本系统专为娱乐目的而设计，不构成任何形式的咨询。', legal_btn: '我同意', 
-    welcome: '欢迎', auth_subtitle: '登录', email: '电邮', password: '密码', continue: '继续', or_continue: '或其他', 
+    welcome: '欢迎', auth_subtitle: '登录', email: '电邮', password: '密码', continue: '继续', or_continue: '或其他', error_empty: '错误：字段为空', reg_success: '注册成功', login_success: '登录成功',
     comp_setup: '设置', persona_voice: '声音', plugin_store: '商店', skills_int: '技能', comp_skills: '技能', account: '账户', sub_limits: '订阅', lang: '语言', settings: '设置', sign_out: '登出', 
-    voice_quota: '限额', mins_left: '分钟剩余', get_mins: '更多', hi: '你好' 
+    voice_quota: '限额', mins_left: '分钟剩余', get_mins: '更多', live_conn: '已连接', connecting: '连接中...', ready: '准备就绪', tap_to_start: '点击通话', listening: '聆听中...', hi: '你好' 
   },
   ja: { 
     legal_title: '法的同意', legal_body: '同意することにより、人工知能と対話していることを受け入れ、確認するものとします。\n\nこのシステムは娯楽目的で作られており、いかなる種類のカウンセリングを構成するものではありません。', legal_btn: '同意する', 
-    welcome: 'ようこそ', auth_subtitle: 'ログイン', email: 'メール', password: 'パス', continue: '続行', or_continue: '他', 
+    welcome: 'ようこそ', auth_subtitle: 'ログイン', email: 'メール', password: 'パス', continue: '続行', or_continue: '他', error_empty: 'エラー：空のフィールド', reg_success: '登録成功', login_success: 'ログイン成功',
     comp_setup: '設定', persona_voice: '音声', plugin_store: 'ストア', skills_int: 'スキル', comp_skills: 'スキル', account: 'アカウント', sub_limits: 'サブスク', lang: '言語', settings: '設定', sign_out: '終了', 
-    voice_quota: '枠', mins_left: '分残り', get_mins: '追加', hi: 'こんにちは' 
+    voice_quota: '枠', mins_left: '分残り', get_mins: '追加', live_conn: 'オンライン', connecting: '接続中...', ready: '準備完了', tap_to_start: 'タップして通話', listening: 'リスニング...', hi: 'こんにちは' 
   },
   ko: { 
     legal_title: '법적 동의', legal_body: '동의함으로써 귀하는 인공지능과 상호작용하고 있음을 수락하고 확인합니다.\n\n이 시스템은 엔터테인먼트 목적으로 제작되었으며 어떠한 형태의 상담도 제공하지 않습니다.', legal_btn: '동의합니다', 
-    welcome: '환영합니다', auth_subtitle: '로그인', email: '메일', password: '비번', continue: '계속', or_continue: '다른', 
+    welcome: '환영합니다', auth_subtitle: '로그인', email: '메일', password: '비번', continue: '계속', or_continue: '다른', error_empty: '오류: 빈 필드', reg_success: '등록 성공', login_success: '로그인 성공',
     comp_setup: '설정', persona_voice: '음성', plugin_store: '상점', skills_int: '스킬', comp_skills: '스킬', account: '계정', sub_limits: '구독', lang: '언어', settings: '설정', sign_out: '로그아웃', 
-    voice_quota: '한도', mins_left: '분 남음', get_mins: '추가', hi: '안녕하세요' 
+    voice_quota: '한도', mins_left: '분 남음', get_mins: '추가', live_conn: '온라인', connecting: '연결 중...', ready: '준비 완료', tap_to_start: '탭하여 통화', listening: '듣는 중...', hi: '안녕하세요' 
   },
   ar: { 
     legal_title: 'الموافقة القانونية', legal_body: 'بالموافقة، أنت تقبل وتؤكد أنك تتفاعل مع ذكاء اصطناعي.\n\nتم تصميم هذا النظام لأغراض ترفيهية ولا يمثل أي نوع من أنواع الاستشارات.', legal_btn: 'أوافق', 
-    welcome: 'أهلاً', auth_subtitle: 'دخول', email: 'بريد', password: 'كلمة', continue: 'متابعة', or_continue: 'أو', 
+    welcome: 'أهلاً', auth_subtitle: 'دخول', email: 'بريد', password: 'كلمة', continue: 'متابعة', or_continue: 'أو', error_empty: 'خطأ: حقول فارغة', reg_success: 'تم التسجيل بنجاح', login_success: 'تم تسجيل الدخول بنجاح',
     comp_setup: 'إعداد', persona_voice: 'صوت', plugin_store: 'متجر', skills_int: 'مهارات', comp_skills: 'مهارات', account: 'حساب', sub_limits: 'اشتراك', lang: 'لغة', settings: 'إعدادات', sign_out: 'خروج', 
-    voice_quota: 'حصة', mins_left: 'دقائق', get_mins: 'المزيد', hi: 'أهلاً' 
+    voice_quota: 'حصة', mins_left: 'دقائق', get_mins: 'المزيد', live_conn: 'متصل', connecting: 'جاري الاتصال...', ready: 'جاهز', tap_to_start: 'اضغط للاتصال', listening: 'أستمع...', hi: 'أهلاً' 
   },
   hi: { 
     legal_title: 'कानूनी सहमति', legal_body: 'सहमति देकर, आप स्वीकार करते हैं और पुष्टि करते हैं कि आप एक कृत्रिम बुद्धिमत्ता के साथ बातचीत कर रहे हैं।\n\nयह प्रणाली मनोरंजन के उद्देश्यों के लिए बनाई गई है और यह किसी भी प्रकार का परामर्श नहीं है।', legal_btn: 'मैं सहमत हूँ', 
-    welcome: 'स्वागत', auth_subtitle: 'लॉगिन', email: 'ईमेल', password: 'पासवर्ड', continue: 'जारी', or_continue: 'अन्य', 
+    welcome: 'स्वागत', auth_subtitle: 'लॉगिन', email: 'ईमेल', password: 'पासवर्ड', continue: 'जारी', or_continue: 'अन्य', error_empty: 'त्रुटि: खाली फ़ील्ड', reg_success: 'पंजीकरण सफल', login_success: 'लॉगिन सफल',
     comp_setup: 'सेटअप', persona_voice: 'आवाज़', plugin_store: 'स्टोर', skills_int: 'कौशल', comp_skills: 'कौशल', account: 'खाता', sub_limits: 'सदस्यता', lang: 'भाषा', settings: 'सेटिंग', sign_out: 'बाहर', 
-    voice_quota: 'कोटा', mins_left: 'मिनट', get_mins: 'अधिक', hi: 'नमस्ते' 
+    voice_quota: 'कोटा', mins_left: 'मिनट', get_mins: 'अधिक', live_conn: 'ऑनलाइन', connecting: 'कनेक्ट हो रहा है...', ready: 'तैयार', tap_to_start: 'कॉल करने के लिए टैप करें', listening: 'सुन रहा हूँ...', hi: 'नमस्ते' 
   }
 };
 
